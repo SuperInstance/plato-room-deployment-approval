@@ -1,0 +1,7 @@
+POLICY coverage_no_drop {
+    SENSE  coverage_delta_pct
+    GUARD   coverage_delta_pct < -5.0
+    ALARM   severity=error
+    ACTUATE block_deployment
+    EMIT    "Coverage dropped below threshold"
+}
