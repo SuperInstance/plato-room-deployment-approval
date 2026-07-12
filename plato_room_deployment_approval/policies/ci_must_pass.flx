@@ -1,0 +1,7 @@
+POLICY ci_must_pass {
+    SENSE  ci_failed
+    GUARD   ci_failed > 0
+    ALARM   severity=critical
+    ACTUATE block_deployment
+    EMIT    "CI is failing — deployment blocked"
+}
