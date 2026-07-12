@@ -1,0 +1,7 @@
+POLICY no_force_push {
+    SENSE  force_push_detected
+    GUARD   force_push_detected > 0
+    ALARM   severity=critical
+    ACTUATE block_deployment
+    EMIT    "Force push to protected branch detected"
+}
