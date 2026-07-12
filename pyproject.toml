@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "plato-room-deployment-approval"
+version = "0.1.0"
+description = "PLATO Deployment Approval Room — deployment gating as an engine block"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = [
+    "plato-core>=0.1.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
+[project.scripts]
+plato-deployment-approval = "plato_room_deployment_approval.room:main"
+
+[project.entry-points."superinstance.plugins"]
+deployment-approval = "plato_room_deployment_approval._mesh:register"
+
+[tool.setuptools]
+packages = ["plato_room_deployment_approval"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--import-mode=importlib"
