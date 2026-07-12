@@ -1,0 +1,7 @@
+POLICY enforce_rate_limit {
+    SENSE  daily_count
+    GUARD   daily_count >= 10
+    ALARM   severity=critical
+    ACTUATE block_deployment
+    EMIT    "Daily deployment limit reached — conservation law enforced"
+}
