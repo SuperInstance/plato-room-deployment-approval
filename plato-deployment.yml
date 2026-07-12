@@ -1,0 +1,13 @@
+gates:
+  ci_passing: enabled
+  coverage_delta:
+    max_drop_pct: 5.0
+  security_scan: enabled
+  diff_size:
+    warn_lines: 1000
+    block_lines: 5000
+  force_push_main: enabled
+  rate_limit:
+    max_daily: 10
+  review_approval:
+    required_reviewers: 1
