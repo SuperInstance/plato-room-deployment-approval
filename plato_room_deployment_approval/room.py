@@ -215,20 +215,32 @@ class BaseRoom:
                                "seq": self._seq, "data": data})
 
         if cmd == "history":
-            n = int(parts[1]) if len(parts) > 1 else 10
+            try:
+                n = int(parts[1]) if len(parts) > 1 else 10
+            except ValueError:
+                return json.dumps(asdict(ErrorResponse(
+                    message="history command requires numeric argument")))
             ticks = list(self._history)[-n:]
             return json.dumps({"type": "history", "count": len(ticks),
                                "ticks": ticks})
 
         if cmd == "audit":
-            n = int(parts[1]) if len(parts) > 1 else 10
+            try:
+                n = int(parts[1]) if len(parts) > 1 else 10
+            except ValueError:
+                return json.dumps(asdict(ErrorResponse(
+                    message="audit command requires numeric argument")))
             entries = list(self._audit_log)[-n:]
             return json.dumps({"type": "audit", "count": len(entries),
                                "entries": entries})
 
         if cmd == "actuator" and len(parts) >= 2:
             name = parts[1]
-            value = float(parts[2]) if len(parts) > 2 else 1.0
+            try:
+                value = float(parts[2]) if len(parts) > 2 else 1.0
+            except ValueError:
+                return json.dumps(asdict(ErrorResponse(
+                    message="actuator value must be numeric")))
             self.actuate(name, value)
             return json.dumps({"type": "ack", "command": "actuator",
                                "name": name, "value": value})
@@ -485,13 +497,9 @@ def _sensor_deployment_state(room: DeploymentApprovalRoom) -> dict[str, float]:
     remaining = room.conservation.remaining()
 
     # Check for force push
+    # A force push to any branch should be detected
     pr_info = room.gh.fetch_pr_info(room.owner, room.repo, room.pr_number)
     force_push = 1.0 if pr_info.get("force_push", False) else 0.0
-    base_ref = pr_info.get("base_ref", "")
-    if base_ref in ("main", "master") and force_push:
-        force_push = 1.0
-    else:
-        force_push = 0.0
 
     return {
         "daily_count": float(count),
@@ -532,6 +540,10 @@ def _sensor_diff_metrics(room: DeploymentApprovalRoom) -> dict[str, float]:
 
 def _actuator_approve(room: DeploymentApprovalRoom, value: float) -> None:
     """Approve a deployment."""
+    if not room.pr_number:
+        logger.warning("Cannot approve: no PR number specified")
+        room.log_audit("approve_failed", {"reason": "no_pr_number"})
+        return
     if not room.conservation.can_deploy():
         logger.warning("Deployment blocked by conservation law")
         room.log_audit("blocked", {"reason": "rate_limit_exceeded"})
@@ -554,6 +566,10 @@ def _actuator_approve(room: DeploymentApprovalRoom, value: float) -> None:
 
 def _actuator_block(room: DeploymentApprovalRoom, value: float) -> None:
     """Block a deployment."""
+    if not room.pr_number:
+        logger.warning("Cannot block: no PR number specified")
+        room.log_audit("block_failed", {"reason": "no_pr_number"})
+        return
     reason = "Gate check failed" if value == 1.0 else "Conservation limit reached"
 
     room.gh.post_comment(
@@ -571,6 +587,9 @@ def _actuator_block(room: DeploymentApprovalRoom, value: float) -> None:
 
 def _actuator_post_approval(room: DeploymentApprovalRoom, value: float) -> None:
     """Post approval-related comment. value: 1=approve, 2=warn."""
+    if not room.pr_number:
+        logger.warning("Cannot post approval: no PR number specified")
+        return
     if value == 1.0:
         room.gh.post_comment(
             room.owner, room.repo, room.pr_number,
@@ -585,6 +604,10 @@ def _actuator_post_approval(room: DeploymentApprovalRoom, value: float) -> None:
 
 def _actuator_rollback(room: DeploymentApprovalRoom, value: float) -> None:
     """Trigger rollback by labeling for manual action."""
+    if not room.pr_number:
+        logger.warning("Cannot trigger rollback: no PR number specified")
+        room.log_audit("rollback_failed", {"reason": "no_pr_number"})
+        return
     room.gh.apply_label(room.owner, room.repo, room.pr_number, "needs-rollback")
     room.gh.post_comment(
         room.owner, room.repo, room.pr_number,

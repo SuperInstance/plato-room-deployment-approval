@@ -61,9 +61,11 @@ class GitHubClient:
 
         try:
             with urlopen(req) as resp:
-                self._rate_limit_remaining = int(
-                    resp.headers.get("X-RateLimit-Remaining", self._rate_limit_remaining)
-                )
+                # GitHub returns lowercase headers; check case-insensitively
+                for key, value in resp.headers.items():
+                    if key.lower() == "x-ratelimit-remaining":
+                        self._rate_limit_remaining = int(value)
+                        break
                 if resp.status == 204:
                     return {}
                 return json.loads(resp.read())

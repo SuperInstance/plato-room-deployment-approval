@@ -99,16 +99,21 @@ def generate_report(
 
     # ── Conservation status ──────────────────────────────────
     if conservation:
-        remaining = conservation.remaining()
-        used = conservation.count_today()
-        max_daily = conservation.max_per_day
-        lines.append("### 🔋 Conservation Status\n")
-        lines.append(f"| Metric | Value |")
-        lines.append(f"|--------|-------|")
-        lines.append(f"| Daily Limit | {max_daily} deployments/day |")
-        lines.append(f"| Used Today | {used} |")
-        lines.append(f"| Remaining | {remaining} |")
-        lines.append("")
+        try:
+            remaining = conservation.remaining()
+            used = conservation.count_today()
+            max_daily = conservation.max_per_day
+            lines.append("### 🔋 Conservation Status\n")
+            lines.append(f"| Metric | Value |")
+            lines.append(f"|--------|-------|")
+            lines.append(f"| Daily Limit | {max_daily} deployments/day |")
+            lines.append(f"| Used Today | {used} |")
+            lines.append(f"| Remaining | {remaining} |")
+            lines.append("")
+        except (TypeError, AttributeError):
+            # Handle case where conservation methods return unexpected values
+            lines.append("### 🔋 Conservation Status\n")
+            lines.append("Unable to display conservation status due to data error.\n")
 
     # ── Detailed Results ─────────────────────────────────────
     lines.append("### Gate Details\n")

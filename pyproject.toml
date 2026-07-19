@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "plato-room-deployment-approval"
-version = "0.1.0"
+version = "0.1.1"
 description = "PLATO Deployment Approval Room — deployment gating as an engine block"
 readme = "README.md"
 license = {text = "MIT"}

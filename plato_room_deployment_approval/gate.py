@@ -104,7 +104,9 @@ class ConservationTracker:
     def from_dict(cls, data: dict) -> "ConservationTracker":
         """Deserialize state."""
         tracker = cls(max_per_day=data.get("max_per_day", 10))
-        tracker._deployments = list(data.get("deployments", []))
+        # Filter out None values and ensure valid timestamps
+        deployments = data.get("deployments", [])
+        tracker._deployments = [d for d in deployments if d is not None and isinstance(d, (int, float))]
         return tracker
 
 
@@ -146,6 +148,18 @@ def check_ci_passing(ctx: GateContext) -> GateResult:
 @gate
 def check_coverage_delta(ctx: GateContext) -> GateResult:
     """Coverage must not drop beyond threshold."""
+    # Validate coverage values are in valid range [0, 100]
+    if not (0 <= ctx.coverage_base <= 100) or not (0 <= ctx.coverage_head <= 100):
+        return GateResult(
+            gate_id="coverage_delta",
+            name="Coverage Delta",
+            passed=False,
+            message=f"Invalid coverage values: base={ctx.coverage_base}%, head={ctx.coverage_head}%. "
+                    f"Coverage must be between 0% and 100%.",
+            severity="error",
+            blocking=True,
+        )
+
     if ctx.coverage_base == 0 and ctx.coverage_head == 0:
         return GateResult(
             gate_id="coverage_delta",
@@ -343,9 +357,10 @@ def run_all_gates(ctx: GateContext) -> list[GateResult]:
             results.append(GateResult(
                 gate_id=func.__name__,
                 name=func.__name__,
-                passed=True,  # Don't block on gate crash
+                passed=False,  # Failed gates should not pass
                 message=f"Gate errored: {exc}",
-                severity="info",
+                severity="error",
+                blocking=True,  # Crashed gates should block deployment
             ))
     return results
 

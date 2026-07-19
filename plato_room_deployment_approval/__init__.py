@@ -14,7 +14,7 @@ except ImportError:
     from github_client import GitHubClient
     from report import generate_report, generate_short_summary
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = [
     "DeploymentApprovalRoom",
     "BaseRoom",
