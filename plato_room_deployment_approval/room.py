@@ -549,6 +549,21 @@ def _actuator_approve(room: DeploymentApprovalRoom, value: float) -> None:
         room.log_audit("blocked", {"reason": "rate_limit_exceeded"})
         return
 
+    # Re-verify gates before approving (safety check)
+    try:
+        from gate import run_all_gates, deployment_decision
+        ctx = room._build_gate_context()
+        results = run_all_gates(ctx)
+        decision = deployment_decision(results)
+        if decision.block:
+            logger.warning(f"Deployment blocked by gates: {decision.reason}")
+            room.log_audit("blocked", {"reason": f"gate_failure: {decision.reason}"})
+            return
+    except Exception as e:
+        logger.warning(f"Gate re-verification failed: {e}")
+        room.log_audit("blocked", {"reason": f"gate_error: {e}"})
+        return
+
     room.conservation.record()
     room.gh.post_comment(
         room.owner, room.repo, room.pr_number,
