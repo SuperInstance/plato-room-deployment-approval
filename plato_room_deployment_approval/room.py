@@ -438,6 +438,31 @@ class DeploymentApprovalRoom(BaseRoom):
                             operator=">=", threshold=float(self.conservation.max_per_day),
                             cooldown_sec=3600)
 
+    def _build_gate_context(self) -> GateContext:
+        """Assemble the gate context from live PR state.
+
+        This method did not exist. `_actuator_approve` called it, the call raised
+        AttributeError, and the bare `except Exception` below filed that as a policy
+        "blocked" -- so the safety check added by 6d1b788 was unreachable for a THIRD
+        reason, after the bare `from gate import` and after the tuple `.block` access.
+
+        It mirrors the `--once` path in main(), which is the one that works, so the
+        actuator and the one-shot evaluator see the same state.
+        """
+        pr_info = self.gh.fetch_pr_info(self.owner, self.repo, self.pr_number)
+        head_sha = pr_info.get("head_sha", "")
+        ci_status = self.gh.fetch_ci_status(self.owner, self.repo, head_sha)
+        reviews = self.gh.fetch_reviews(self.owner, self.repo, self.pr_number)
+        return GateContext(
+            pr_info=pr_info,
+            ci_status=ci_status,
+            reviews=reviews,
+            deployments_today=self.conservation.count_today(),
+            max_daily_deployments=self.conservation.max_per_day,
+            max_coverage_drop_pct=self.max_coverage_drop_pct,
+            required_reviewers=self.required_reviewers,
+        )
+
     def _on_alarm(self, alarm: AlarmDef, data: dict[str, float], ts: float) -> None:
         """Handle deployment alarms."""
         logger.warning("Deployment alarm %s triggered (data=%s)", alarm.alarm_id, data)

@@ -262,3 +262,65 @@ class TestDeploymentApprovalRoom:
         assert len(room._audit_log) > initial_audit_count
         latest = room._audit_log[-1]
         assert latest["event"] == "blocked"
+
+    def test_approve_path_actually_runs_the_gates(self):
+        """The actuator must EVALUATE gates, not merely reach a line that looks like it does.
+
+        The safety check added in 6d1b788 was unreachable three times over: a bare
+        `from gate import`, `deployment_decision(...).block` on a function that returns a
+        tuple, and a `_build_gate_context()` that was never defined. Every one of those
+        raised, and the bare `except Exception` recorded the same `{"event": "blocked"}`
+        entry a legitimate policy block writes. Only a test that watches the gates being
+        called can tell the two apart.
+        """
+        import plato_room_deployment_approval.room as room_module
+
+        calls = []
+        real_run_all_gates = room_module.run_all_gates
+
+        def spy(ctx):
+            calls.append(ctx)
+            return real_run_all_gates(ctx)
+
+        room_module.run_all_gates = spy
+        try:
+            gh = GitHubClient(token="")
+            room = DeploymentApprovalRoom(gh, "owner", "repo", 42, port=0)
+            room.actuate("approve_deployment", 1.0)
+        finally:
+            room_module.run_all_gates = real_run_all_gates
+
+        assert len(calls) == 1, f"expected exactly one gate evaluation, got {len(calls)}"
+        assert room.conservation.count_today() == 1, "an all-GO run must record the deployment"
+
+    def test_approve_blocked_by_a_failing_gate_is_not_an_error(self):
+        """A gate that blocks must be distinguishable in the audit trail from a gate that crashed.
+
+        Both used to land on `event: "blocked"`. The signal that matters for operations is
+        the reason: `gate_failure:` means policy worked, `gate_error:` means the room is
+        broken. Collapsing them is how every approval stayed blocked for a week.
+        """
+        gh = GitHubClient(token="")
+        gh.fetch_ci_status = lambda owner, repo, sha="": {"failed": 2, "pending": 0}
+        room = DeploymentApprovalRoom(gh, "owner", "repo", 42, port=0)
+        room.actuate("approve_deployment", 1.0)
+
+        assert room.conservation.count_today() == 0, "failing CI must not record a deployment"
+        blocked = [e for e in list(room._audit_log) if e["event"] == "blocked"]
+        assert blocked, "expected a blocked audit entry"
+        reason = blocked[-1]["data"]["reason"]
+        assert reason.startswith("gate_failure:"), f"expected a real gate block, got {reason!r}"
+        assert "gate_error" not in reason, f"gates crashed instead of blocking: {reason!r}"
+
+    def test_build_gate_context_carries_the_room_s_configuration(self):
+        """_build_gate_context did not exist; these are the fields the gates actually read."""
+        gh = GitHubClient(token="")
+        room = DeploymentApprovalRoom(
+            gh, "owner", "repo", 42, port=0,
+            max_daily_deployments=7, max_coverage_drop_pct=3.5, required_reviewers=2,
+        )
+        ctx = room._build_gate_context()
+        assert ctx.max_daily_deployments == 7
+        assert ctx.max_coverage_drop_pct == 3.5
+        assert ctx.required_reviewers == 2
+        assert ctx.deployments_today == 0
