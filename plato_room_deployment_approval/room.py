@@ -550,14 +550,44 @@ def _actuator_approve(room: DeploymentApprovalRoom, value: float) -> None:
         return
 
     # Re-verify gates before approving (safety check)
+    #
+    # TWO defects lived here, and both made EVERY approval blocked, and both
+    # were hidden by the bare `except Exception` below turning a programming
+    # error into a policy decision:
+    #
+    # 1. The import was `from gate import ...` -- a BARE top-level import of
+    #    a module that lives at plato_room_deployment_approval/gate.py. It
+    #    only resolves if the package directory itself is on sys.path, which
+    #    it is NOT when the package is installed (pip install -e ".[test]").
+    #    So it raised ModuleNotFoundError, and the deployment was blocked.
+    #    The import is now GONE: run_all_gates and deployment_decision are
+    #    already imported at module scope (see the top of this file), so an
+    #    import failure is now a MODULE-LOAD failure -- loud, at import
+    #    time, where it belongs -- instead of a runtime "blocked" verdict.
+    #
+    # 2. deployment_decision returns a TUPLE (decision, blocking_failures).
+    #    It has no .block and no .reason. The other caller in this file
+    #    unpacks it correctly; this one did not, so `decision.block` raised
+    #    AttributeError, and the deployment was blocked again.
+    #
+    # The commit that introduced the safety check was titled "actuator
+    # approve now re-verifies gates before approving (was bypassing safety
+    # checks)". The re-verification was never reachable. A safety check
+    # that can never run is not a safety check; it is an outage.
     try:
-        from gate import run_all_gates, deployment_decision
         ctx = room._build_gate_context()
         results = run_all_gates(ctx)
-        decision = deployment_decision(results)
-        if decision.block:
-            logger.warning(f"Deployment blocked by gates: {decision.reason}")
-            room.log_audit("blocked", {"reason": f"gate_failure: {decision.reason}"})
+        # deployment_decision returns a TUPLE (decision, blocking_failures) --
+        # it has no .block and no .reason. The other caller in this file
+        # unpacks it correctly; this one did not, so `decision.block` raised
+        # AttributeError, the bare `except Exception` caught it, and the
+        # deployment was BLOCKED. Same shape as the import bug above: a
+        # silent "blocked" where the code meant to be a gate check.
+        decision, blocking = deployment_decision(results)
+        if decision == "BLOCKED":
+            names = [getattr(r, "name", str(r)) for r in blocking]
+            logger.warning(f"Deployment blocked by gates: {names}")
+            room.log_audit("blocked", {"reason": f"gate_failure: {names}"})
             return
     except Exception as e:
         logger.warning(f"Gate re-verification failed: {e}")
